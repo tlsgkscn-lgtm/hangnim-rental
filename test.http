@@ -1,0 +1,8 @@
+### 로그인 테스트
+POST http://localhost:3000/auth/login
+Content-Type: application/json
+
+{
+  "loginId": "admin",
+  "password": "admin1234"
+}

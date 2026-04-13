@@ -1,0 +1,192 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  PENDING
+  BLOCKED
+}
+
+enum ReceiptStatus {
+  RECEIVED
+  CONSULTING
+  CONTRACTED
+  INSTALLED
+  CANCELED
+}
+
+enum PaymentMethod {
+  BANK
+  CARD
+  ETC
+}
+
+enum CustomerType {
+  PERSONAL
+  BUSINESS
+  ETC
+}
+
+enum AttachmentType {
+  BUSINESS_DOC
+  ETC_DOC
+  PERSONAL_DOC
+}
+
+model User {
+  id           String       @id @default(cuid())
+  loginId      String       @unique
+  passwordHash String
+  name         String
+  company      String?
+  phone        String?
+  role         UserRole     @default(USER)
+  status       UserStatus   @default(PENDING)
+  memo         String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  receipts      Receipt[]
+  statusHistory ReceiptStatusHistory[] @relation("status_changed_by")
+}
+
+model Brand {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String   @unique
+  color     String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  isCustom  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products ReceiptProduct[]
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String   @unique
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products ReceiptProduct[]
+}
+
+model Receipt {
+  id               String         @id @default(cuid())
+  receiptNumber    String         @unique
+  status           ReceiptStatus  @default(RECEIVED)
+
+  customerName     String
+  residentNoFront  String
+  gender           String
+  phone            String
+  email            String?
+
+  zipCode          String?
+  address1         String
+  address2         String?
+
+  installHopeDate  DateTime?
+  memo             String?
+
+  paymentMethod    PaymentMethod
+  paymentDay       Int?
+
+  bankName         String?
+  bankAccount      String?
+
+  cardCompany      String?
+  cardNumber       String?
+  cardExpiry       String?
+
+  paymentEtcMemo   String?
+
+  salesAgent       String?
+  receptionChannel String?
+  customerType     CustomerType   @default(PERSONAL)
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  createdById      String?
+  createdBy        User?          @relation(fields: [createdById], references: [id])
+
+  products         ReceiptProduct[]
+  attachments      ReceiptAttachment[]
+  histories        ReceiptStatusHistory[]
+}
+
+model ReceiptProduct {
+  id               String   @id @default(cuid())
+
+  receiptId        String
+  receipt          Receipt  @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  brandId          String?
+  brand            Brand?   @relation(fields: [brandId], references: [id])
+
+  customBrandName  String?
+
+  categoryId       String?
+  category         Category? @relation(fields: [categoryId], references: [id])
+
+  customCategoryName String?
+
+  productName      String
+  modelName        String
+  color            String
+  quantity         Int      @default(1)
+
+  managementType   String
+  promotion        String
+  contractPeriod   String
+  rentalFee        String
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model ReceiptAttachment {
+  id          String         @id @default(cuid())
+  receiptId   String
+  receipt     Receipt        @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  type        AttachmentType
+  fileName    String
+  fileUrl     String
+  mimeType    String?
+  fileSize    Int?
+
+  createdAt   DateTime       @default(now())
+}
+
+model ReceiptStatusHistory {
+  id           String        @id @default(cuid())
+  receiptId     String
+  receipt       Receipt      @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  fromStatus    ReceiptStatus?
+  toStatus      ReceiptStatus
+
+  changedById   String?
+  changedBy     User?        @relation("status_changed_by", fields: [changedById], references: [id])
+
+  note          String?
+  createdAt     DateTime     @default(now())
+}
