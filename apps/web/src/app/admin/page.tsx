@@ -4,16 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import TopNav from "../../components/layout/top-nav";
 import {
-  getReceipts,
   getSession,
   getUsers,
   setUsers,
-  setReceipts,
   initializeMockData,
   statusBadgeClass,
   type Receipt,
   type AppUser,
 } from "../../lib/storage";
+import { apiFetch } from "../../lib/api";
 
 type AdminTab = "list" | "users" | "chart" | "products";
 
@@ -70,6 +69,121 @@ function setSubcatsToStorage(subcats: string[]) {
   localStorage.setItem("wj_subcats", JSON.stringify(subcats));
 }
 
+function fromApiStatus(
+  status: "RECEIVED" | "CONSULTING" | "CONTRACTED" | "INSTALLED" | "CANCELED",
+): Receipt["status"] {
+  switch (status) {
+    case "RECEIVED":
+      return "접수";
+    case "CONSULTING":
+      return "상담중";
+    case "CONTRACTED":
+      return "계약완료";
+    case "INSTALLED":
+      return "설치완료";
+    case "CANCELED":
+      return "취소";
+    default:
+      return "접수";
+  }
+}
+
+function toApiStatus(status: Receipt["status"]) {
+  switch (status) {
+    case "접수":
+      return "RECEIVED";
+    case "상담중":
+      return "CONSULTING";
+    case "계약완료":
+      return "CONTRACTED";
+    case "설치완료":
+      return "INSTALLED";
+    case "취소":
+      return "CANCELED";
+    default:
+      return "RECEIVED";
+  }
+}
+
+function mapReceiptFromApi(r: any): Receipt {
+  return {
+    id: r.id,
+    num: r.receiptNumber,
+    date: r.createdAt?.slice(0, 10) || "",
+    name: r.customerName,
+    phone: r.phone,
+    addr: [r.address1, r.address2].filter(Boolean).join(" "),
+    products:
+      r.products?.map((p: any) => {
+        const brand = p.brand?.name || p.customBrandName || "기타";
+        const category = p.category?.name || p.customCategoryName || "";
+        let text = `${brand} ${category}`.trim();
+        if (p.productName) text += ` ${p.productName}`;
+        if (p.modelName) text += ` [${p.modelName}]`;
+        return text;
+      }) || [],
+    productDetails:
+      r.products?.map((p: any) => ({
+        brand: p.brand?.name || p.customBrandName || "기타",
+        category: p.category?.name || p.customCategoryName || "",
+        productName: p.productName,
+        modelName: p.modelName,
+        color: p.color,
+        qty: p.quantity,
+        managementType: p.managementType,
+        promotion: p.promotion,
+        contractPeriod: p.contractPeriod,
+        rentalFee: p.rentalFee,
+      })) || [],
+    period: 0,
+    monthly: 0,
+    status: fromApiStatus(r.status),
+    agent: r.salesAgent || "-",
+    channel: r.receptionChannel || "-",
+    memo: r.memo || "",
+    payMethod:
+      r.paymentMethod === "BANK"
+        ? "은행"
+        : r.paymentMethod === "CARD"
+        ? "신용카드"
+        : "기타",
+    bankName: r.bankName || "",
+    bankAccount: r.bankAccount || "",
+    cardCompany: r.cardCompany || "",
+    cardNumber: r.cardNumber || "",
+    cardExpiry: r.cardExpiry || "",
+    payEtc: r.paymentEtcMemo || "",
+    custType:
+      r.customerType === "PERSONAL"
+        ? "개인"
+        : r.customerType === "BUSINESS"
+        ? "사업자"
+        : "기타",
+    userId: r.createdBy?.id || "",
+    userName: r.createdBy?.name || "",
+    createdAt: r.createdAt?.slice(0, 10) || "",
+  } as Receipt;
+}
+
+function mapUserFromApi(u: any): AppUser {
+  return {
+    id: u.loginId || u.id,
+    pw: "",
+    name: u.name,
+    company: u.company || "",
+    phone: u.phone || "",
+    role: u.role === "ADMIN" ? "admin" : "user",
+    status:
+      u.status === "ACTIVE"
+        ? "active"
+        : u.status === "PENDING"
+        ? "pending"
+        : "blocked",
+    memo: u.memo || "",
+    createdAt: u.createdAt?.slice(0, 10) || "",
+  } as any;
+}
+
 export default function AdminPage() {
   const router = useRouter();
 
@@ -110,21 +224,9 @@ export default function AdminPage() {
   const [newBrandColor, setNewBrandColor] = useState("#2563EB");
   const [newSubcat, setNewSubcat] = useState("");
 
-  useEffect(() => {
-    initializeMockData();
-
-    const session = getSession();
-    if (!session) {
-      router.replace("/login");
-      return;
-    }
-
-    setAllReceipts(getReceipts());
-    setAllUsersState(getUsers());
-    setBrands(getBrandsFromStorage());
-    setSubcats(getSubcatsFromStorage());
-    setReady(true);
-  }, [router]);
+  const [usersApiEnabled, setUsersApiEnabled] = useState(false);
+  const [brandsApiEnabled, setBrandsApiEnabled] = useState(false);
+  const [categoriesApiEnabled, setCategoriesApiEnabled] = useState(false);
 
   const currentSession = useMemo(() => {
     if (!ready) return null;
@@ -133,12 +235,77 @@ export default function AdminPage() {
 
   const isAdmin = currentSession?.role === "admin";
 
+  const loadReceipts = async () => {
+    const receipts = await apiFetch<any[]>("/receipts");
+    setAllReceipts(receipts.map(mapReceiptFromApi));
+  };
+
+  const loadUsers = async () => {
+    try {
+      const users = await apiFetch<any[]>("/users");
+      setAllUsersState(users.map(mapUserFromApi));
+      setUsersApiEnabled(true);
+    } catch {
+      setAllUsersState(getUsers());
+      setUsersApiEnabled(false);
+    }
+  };
+
+  const loadBrands = async () => {
+    try {
+      const data = await apiFetch<any[]>("/brands");
+      const mapped = data.map((b, idx) => ({
+        id: b.id || b.code || `brand_${idx}`,
+        name: b.name,
+        color: b.color || "#2563EB",
+      }));
+      setBrands(mapped);
+      setBrandsApiEnabled(true);
+    } catch {
+      setBrands(getBrandsFromStorage());
+      setBrandsApiEnabled(false);
+    }
+  };
+
+  const loadCategories = async () => {
+    try {
+      const data = await apiFetch<any[]>("/categories");
+      setSubcats(data.map((c) => c.name));
+      setCategoriesApiEnabled(true);
+    } catch {
+      setSubcats(getSubcatsFromStorage());
+      setCategoriesApiEnabled(false);
+    }
+  };
+
+  useEffect(() => {
+    const bootstrap = async () => {
+      initializeMockData();
+
+      const session = getSession();
+      if (!session) {
+        router.replace("/login");
+        return;
+      }
+
+      try {
+        await Promise.all([loadReceipts(), loadUsers(), loadBrands(), loadCategories()]);
+      } catch (err) {
+        console.error(err);
+      }
+
+      setReady(true);
+    };
+
+    bootstrap();
+  }, [router]);
+
   const stats = useMemo(() => {
     const total = allReceipts.length;
     const today = new Date().toISOString().slice(0, 10);
     const todayCnt = allReceipts.filter((r) => r.date === today).length;
     const contractCnt = allReceipts.filter(
-      (r) => r.status === "계약완료" || r.status === "설치완료"
+      (r) => r.status === "계약완료" || r.status === "설치완료",
     ).length;
     const cancelCnt = allReceipts.filter((r) => r.status === "취소").length;
     const pendingCnt = allUsers.filter((u) => u.status === "pending").length;
@@ -170,7 +337,7 @@ export default function AdminPage() {
     }
 
     return data;
-  }, [allReceipts, isAdmin, currentSession, search, statusFilter, userFilter]);
+  }, [allReceipts, isAdmin, currentSession?.id, search, statusFilter, userFilter]);
 
   const totalPages = Math.max(1, Math.ceil(visibleReceipts.length / PER_PAGE));
 
@@ -180,9 +347,7 @@ export default function AdminPage() {
   }, [visibleReceipts, currentPage]);
 
   useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(1);
-    }
+    if (currentPage > totalPages) setCurrentPage(1);
   }, [currentPage, totalPages]);
 
   const filteredUsers = useMemo(() => {
@@ -201,7 +366,7 @@ export default function AdminPage() {
 
   const pendingUsers = useMemo(
     () => allUsers.filter((u) => u.status === "pending"),
-    [allUsers]
+    [allUsers],
   );
 
   const brandCounts = useMemo(() => {
@@ -259,18 +424,28 @@ export default function AdminPage() {
     setSelectedReceipt(null);
   };
 
-  const updateStatus = () => {
-    if (!selectedReceipt) return;
+  const updateStatus = async () => {
+    if (!selectedReceipt?.id) {
+      alert("접수 ID를 찾을 수 없습니다.");
+      return;
+    }
 
-    const next = allReceipts.map((r) =>
-      r.num === selectedReceipt.num
-        ? { ...r, status: selectedStatus as Receipt["status"] }
-        : r
-    );
+    try {
+      await apiFetch(`/receipts/${selectedReceipt.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: toApiStatus(selectedStatus as Receipt["status"]),
+          note: "관리자 상태 변경",
+        }),
+      });
 
-    setReceipts(next);
-    setAllReceipts(next);
-    closeDetailModal();
+      await loadReceipts();
+      closeDetailModal();
+      alert("상태가 변경되었습니다.");
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "상태 변경 중 오류가 발생했습니다.");
+    }
   };
 
   const openNewUserModal = () => {
@@ -289,13 +464,13 @@ export default function AdminPage() {
   const openEditUserModal = (user: AppUser) => {
     setEditingUserId(user.id);
     setUmId(user.id);
-    setUmPw(user.pw);
+    setUmPw((user as any).pw || "");
     setUmName(user.name);
-    setUmCompany(user.company || "");
-    setUmPhone(user.phone || "");
+    setUmCompany((user as any).company || "");
+    setUmPhone((user as any).phone || "");
     setUmRole(user.role);
     setUmStatus(user.status);
-    setUmMemo(user.memo || "");
+    setUmMemo((user as any).memo || "");
     setUserModalOpen(true);
   };
 
@@ -304,10 +479,62 @@ export default function AdminPage() {
     setEditingUserId(null);
   };
 
-  const saveUser = () => {
+  const saveUser = async () => {
     if (!umId.trim() || !umPw.trim() || !umName.trim()) {
       alert("아이디, 비밀번호, 이름은 필수 입력 항목입니다.");
       return;
+    }
+
+    if (usersApiEnabled) {
+      try {
+        if (editingUserId) {
+          await apiFetch(`/users/${editingUserId}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              loginId: umId.trim(),
+              password: umPw.trim(),
+              name: umName.trim(),
+              company: umCompany.trim(),
+              phone: umPhone.trim(),
+              role: umRole === "admin" ? "ADMIN" : "USER",
+              status:
+                umStatus === "active"
+                  ? "ACTIVE"
+                  : umStatus === "pending"
+                  ? "PENDING"
+                  : "BLOCKED",
+              memo: umMemo.trim(),
+            }),
+          });
+        } else {
+          await apiFetch("/users", {
+            method: "POST",
+            body: JSON.stringify({
+              loginId: umId.trim(),
+              password: umPw.trim(),
+              name: umName.trim(),
+              company: umCompany.trim(),
+              phone: umPhone.trim(),
+              role: umRole === "admin" ? "ADMIN" : "USER",
+              status:
+                umStatus === "active"
+                  ? "ACTIVE"
+                  : umStatus === "pending"
+                  ? "PENDING"
+                  : "BLOCKED",
+              memo: umMemo.trim(),
+            }),
+          });
+        }
+
+        await loadUsers();
+        closeUserModal();
+        alert("저장되었습니다.");
+        return;
+      } catch (err) {
+        console.error(err);
+        alert("사용자 API 저장 실패, localStorage 방식으로 처리합니다.");
+      }
     }
 
     const next = [...allUsers];
@@ -325,7 +552,7 @@ export default function AdminPage() {
         role: umRole,
         status: umStatus,
         memo: umMemo.trim(),
-      };
+      } as any;
     } else {
       if (next.some((u) => u.id === umId.trim())) {
         alert("이미 사용 중인 아이디입니다.");
@@ -342,39 +569,64 @@ export default function AdminPage() {
         status: umStatus,
         memo: umMemo.trim(),
         createdAt: new Date().toISOString().slice(0, 10),
-      });
+      } as any);
     }
 
-    setUsers(next);
+    setUsers(next as any);
     setAllUsersState(next);
     closeUserModal();
     alert("저장되었습니다.");
   };
 
-  const quickApprove = (id: string) => {
+  const quickApprove = async (id: string) => {
+    if (usersApiEnabled) {
+      try {
+        await apiFetch(`/users/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: "ACTIVE" }),
+        });
+        await loadUsers();
+        alert("계정이 활성화되었습니다.");
+        return;
+      } catch {
+        //
+      }
+    }
+
     const next = allUsers.map((u) =>
-      u.id === id ? { ...u, status: "active" as const } : u
+      u.id === id ? ({ ...u, status: "active" as const } as any) : u,
     );
-    setUsers(next);
+    setUsers(next as any);
     setAllUsersState(next);
     alert("계정이 활성화되었습니다.");
   };
 
-  const quickBlock = (id: string) => {
+  const quickBlock = async (id: string) => {
     const target = allUsers.find((u) => u.id === id);
     if (!target) return;
-
     if (!confirm(`${target.name}(${target.id}) 계정을 차단하시겠습니까?`)) return;
 
-    const next = allUsers.map((u) =>
-      u.id === id ? { ...u, status: "blocked" as const } : u
-    );
+    if (usersApiEnabled) {
+      try {
+        await apiFetch(`/users/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: "BLOCKED" }),
+        });
+        await loadUsers();
+        return;
+      } catch {
+        //
+      }
+    }
 
-    setUsers(next);
+    const next = allUsers.map((u) =>
+      u.id === id ? ({ ...u, status: "blocked" as const } as any) : u,
+    );
+    setUsers(next as any);
     setAllUsersState(next);
   };
 
-  const deleteUser = (id: string) => {
+  const deleteUser = async (id: string) => {
     const target = allUsers.find((u) => u.id === id);
     if (!target) return;
 
@@ -386,8 +638,18 @@ export default function AdminPage() {
 
     if (!confirm(`[${target.name}] 계정을 정말 삭제하시겠습니까?`)) return;
 
+    if (usersApiEnabled) {
+      try {
+        await apiFetch(`/users/${id}`, { method: "DELETE" });
+        await loadUsers();
+        return;
+      } catch {
+        //
+      }
+    }
+
     const next = allUsers.filter((u) => u.id !== id);
-    setUsers(next);
+    setUsers(next as any);
     setAllUsersState(next);
   };
 
@@ -403,7 +665,27 @@ export default function AdminPage() {
     setBrands(next);
   };
 
-  const persistBrands = () => {
+  const persistBrands = async () => {
+    if (brandsApiEnabled) {
+      try {
+        await apiFetch("/brands/bulk", {
+          method: "PUT",
+          body: JSON.stringify({
+            brands: brands.map((b, idx) => ({
+              id: b.id,
+              name: b.name,
+              color: b.color,
+              sortOrder: idx,
+            })),
+          }),
+        });
+        alert("브랜드 설정이 저장되었습니다.");
+        return;
+      } catch {
+        //
+      }
+    }
+
     setBrandsToStorage(brands);
     alert("브랜드 설정이 저장되었습니다.");
   };
@@ -440,9 +722,7 @@ export default function AdminPage() {
     }
 
     if (!confirm(`[${brands[index]?.name}] 브랜드를 삭제하시겠습니까?`)) return;
-
-    const next = brands.filter((_, i) => i !== index);
-    setBrands(next);
+    setBrands(brands.filter((_, i) => i !== index));
   };
 
   const updateSubcat = (index: number, value: string) => {
@@ -456,9 +736,7 @@ export default function AdminPage() {
       alert("품목은 최소 1개 이상 유지해야 합니다.");
       return;
     }
-
-    const next = subcats.filter((_, i) => i !== index);
-    setSubcats(next);
+    setSubcats(subcats.filter((_, i) => i !== index));
   };
 
   const addSubcat = () => {
@@ -466,22 +744,40 @@ export default function AdminPage() {
       alert("품목명을 입력해 주세요.");
       return;
     }
-
     if (subcats.includes(newSubcat.trim())) {
       alert("이미 존재하는 품목입니다.");
       return;
     }
-
     setSubcats([...subcats, newSubcat.trim()]);
     setNewSubcat("");
   };
 
-  const persistSubcats = () => {
+  const persistSubcats = async () => {
     const cleaned = subcats.map((s) => s.trim()).filter(Boolean);
     if (!cleaned.length) {
       alert("품목은 최소 1개 이상 필요합니다.");
       return;
     }
+
+    if (categoriesApiEnabled) {
+      try {
+        await apiFetch("/categories/bulk", {
+          method: "PUT",
+          body: JSON.stringify({
+            categories: cleaned.map((name, idx) => ({
+              name,
+              sortOrder: idx,
+            })),
+          }),
+        });
+        setSubcats(cleaned);
+        alert("품목 목록이 저장되었습니다.");
+        return;
+      } catch {
+        //
+      }
+    }
+
     setSubcats(cleaned);
     setSubcatsToStorage(cleaned);
     alert("품목 목록이 저장되었습니다.");
@@ -687,133 +983,131 @@ export default function AdminPage() {
         )}
 
         {tab === "users" && isAdmin && (
-          <>
-            <div className="card">
-              <div className="card-header purple">👥 사용자(거래처) 계정 관리</div>
-              <div className="card-body">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <input
-                      type="text"
-                      value={userSearch}
-                      onChange={(e) => setUserSearch(e.target.value)}
-                      placeholder="이름/아이디 검색"
-                      style={{ maxWidth: 180 }}
-                    />
-                    <select
-                      value={userStatusFilter}
-                      onChange={(e) => setUserStatusFilter(e.target.value)}
-                      style={{ maxWidth: 120 }}
-                    >
-                      <option value="">전체 상태</option>
-                      <option value="active">활성</option>
-                      <option value="pending">승인대기</option>
-                      <option value="blocked">차단</option>
-                    </select>
-                  </div>
-
-                  <button className="btn btn-purple btn-sm" type="button" onClick={openNewUserModal}>
-                    ➕ 새 계정 추가
-                  </button>
+          <div className="card">
+            <div className="card-header purple">👥 사용자(거래처) 계정 관리</div>
+            <div className="card-body">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <input
+                    type="text"
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    placeholder="이름/아이디 검색"
+                    style={{ maxWidth: 180 }}
+                  />
+                  <select
+                    value={userStatusFilter}
+                    onChange={(e) => setUserStatusFilter(e.target.value)}
+                    style={{ maxWidth: 120 }}
+                  >
+                    <option value="">전체 상태</option>
+                    <option value="active">활성</option>
+                    <option value="pending">승인대기</option>
+                    <option value="blocked">차단</option>
+                  </select>
                 </div>
 
-                {pendingUsers.length > 0 && (
-                  <div className="alert alert-yellow" style={{ marginBottom: 12 }}>
-                    ⚠️ 승인 대기 중인 계정이 {pendingUsers.length}개 있습니다:{" "}
-                    {pendingUsers.map((u) => `${u.name}(${u.id})`).join(", ")}
-                  </div>
-                )}
+                <button className="btn btn-purple btn-sm" type="button" onClick={openNewUserModal}>
+                  ➕ 새 계정 추가
+                </button>
+              </div>
 
-                <div className="tbl-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>아이디</th>
-                        <th>이름</th>
-                        <th>회사명</th>
-                        <th>연락처</th>
-                        <th>권한</th>
-                        <th>상태</th>
-                        <th>접수건수</th>
-                        <th>등록일</th>
-                        <th>관리</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredUsers.length > 0 ? (
-                        filteredUsers.map((u) => {
-                          const count = allReceipts.filter((r) => r.userId === u.id).length;
-                          return (
-                            <tr key={u.id}>
-                              <td style={{ fontWeight: 700, color: "var(--blue2)" }}>{u.id}</td>
-                              <td><strong>{u.name}</strong></td>
-                              <td>{u.company || "-"}</td>
-                              <td style={{ whiteSpace: "nowrap" }}>{u.phone || "-"}</td>
-                              <td>
-                                {u.role === "admin" ? (
-                                  <span className="badge badge-purple">관리자</span>
-                                ) : (
-                                  <span className="badge badge-blue">일반</span>
-                                )}
-                              </td>
-                              <td>
-                                {u.status === "active" ? (
-                                  <span className="us-active">활성</span>
-                                ) : u.status === "pending" ? (
-                                  <span className="us-pending">승인대기</span>
-                                ) : (
-                                  <span className="us-blocked">차단</span>
-                                )}
-                              </td>
-                              <td>{count}건</td>
-                              <td>{u.createdAt || "-"}</td>
-                              <td>
-                                <div style={{ display: "flex", gap: 4, justifyContent: "center", flexWrap: "wrap" }}>
-                                  {u.status === "pending" && (
-                                    <button className="btn btn-success btn-sm" type="button" onClick={() => quickApprove(u.id)}>
-                                      승인
-                                    </button>
-                                  )}
+              {pendingUsers.length > 0 && (
+                <div className="alert alert-yellow" style={{ marginBottom: 12 }}>
+                  ⚠️ 승인 대기 중인 계정이 {pendingUsers.length}개 있습니다:{" "}
+                  {pendingUsers.map((u) => `${u.name}(${u.id})`).join(", ")}
+                </div>
+              )}
 
-                                  {u.status === "active" && u.role !== "admin" && (
-                                    <button className="btn btn-gray btn-sm" type="button" onClick={() => quickBlock(u.id)}>
-                                      차단
-                                    </button>
-                                  )}
-
-                                  {u.status === "blocked" && (
-                                    <button className="btn btn-outline btn-sm" type="button" onClick={() => quickApprove(u.id)}>
-                                      활성화
-                                    </button>
-                                  )}
-
-                                  <button className="btn btn-yellow btn-sm" type="button" onClick={() => openEditUserModal(u)}>
-                                    수정
+              <div className="tbl-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>아이디</th>
+                      <th>이름</th>
+                      <th>회사명</th>
+                      <th>연락처</th>
+                      <th>권한</th>
+                      <th>상태</th>
+                      <th>접수건수</th>
+                      <th>등록일</th>
+                      <th>관리</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.length > 0 ? (
+                      filteredUsers.map((u) => {
+                        const count = allReceipts.filter((r) => r.userId === u.id).length;
+                        return (
+                          <tr key={u.id}>
+                            <td style={{ fontWeight: 700, color: "var(--blue2)" }}>{u.id}</td>
+                            <td><strong>{u.name}</strong></td>
+                            <td>{(u as any).company || "-"}</td>
+                            <td style={{ whiteSpace: "nowrap" }}>{(u as any).phone || "-"}</td>
+                            <td>
+                              {u.role === "admin" ? (
+                                <span className="badge badge-purple">관리자</span>
+                              ) : (
+                                <span className="badge badge-blue">일반</span>
+                              )}
+                            </td>
+                            <td>
+                              {u.status === "active" ? (
+                                <span className="us-active">활성</span>
+                              ) : u.status === "pending" ? (
+                                <span className="us-pending">승인대기</span>
+                              ) : (
+                                <span className="us-blocked">차단</span>
+                              )}
+                            </td>
+                            <td>{count}건</td>
+                            <td>{(u as any).createdAt || "-"}</td>
+                            <td>
+                              <div style={{ display: "flex", gap: 4, justifyContent: "center", flexWrap: "wrap" }}>
+                                {u.status === "pending" && (
+                                  <button className="btn btn-success btn-sm" type="button" onClick={() => quickApprove(u.id)}>
+                                    승인
                                   </button>
+                                )}
 
-                                  {(u.role !== "admin" || allUsers.filter((x) => x.role === "admin").length > 1) && (
-                                    <button className="btn btn-danger btn-sm" type="button" onClick={() => deleteUser(u.id)}>
-                                      삭제
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      ) : (
-                        <tr>
-                          <td colSpan={9} style={{ color: "var(--gray)", padding: 20 }}>
-                            사용자가 없습니다.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                                {u.status === "active" && u.role !== "admin" && (
+                                  <button className="btn btn-gray btn-sm" type="button" onClick={() => quickBlock(u.id)}>
+                                    차단
+                                  </button>
+                                )}
+
+                                {u.status === "blocked" && (
+                                  <button className="btn btn-outline btn-sm" type="button" onClick={() => quickApprove(u.id)}>
+                                    활성화
+                                  </button>
+                                )}
+
+                                <button className="btn btn-yellow btn-sm" type="button" onClick={() => openEditUserModal(u)}>
+                                  수정
+                                </button>
+
+                                {(u.role !== "admin" || allUsers.filter((x) => x.role === "admin").length > 1) && (
+                                  <button className="btn btn-danger btn-sm" type="button" onClick={() => deleteUser(u.id)}>
+                                    삭제
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={9} style={{ color: "var(--gray)", padding: 20 }}>
+                          사용자가 없습니다.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
-          </>
+          </div>
         )}
 
         {tab === "chart" && isAdmin && (
@@ -923,14 +1217,7 @@ export default function AdminPage() {
                   브랜드 이름을 수정하고 저장 버튼을 클릭하세요. 색상 코드도 변경할 수 있습니다.
                 </div>
 
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))",
-                    gap: 12,
-                    marginTop: 10,
-                  }}
-                >
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: 12, marginTop: 10 }}>
                   {brands.map((b, index) => (
                     <div
                       key={b.id}
@@ -946,12 +1233,7 @@ export default function AdminPage() {
                       <input
                         value={b.name}
                         onChange={(e) => saveBrandName(index, e.target.value)}
-                        style={{
-                          marginBottom: 10,
-                          borderColor: `${b.color}60`,
-                          color: b.color,
-                          fontWeight: 700,
-                        }}
+                        style={{ marginBottom: 10, borderColor: `${b.color}60`, color: b.color, fontWeight: 700 }}
                       />
 
                       <div style={{ fontSize: 11, color: "var(--gray)", marginBottom: 4 }}>색상 코드</div>
@@ -989,14 +1271,8 @@ export default function AdminPage() {
                       justifyContent: "center",
                     }}
                   >
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--blue2)" }}>
-                      ➕ 새 브랜드 등록
-                    </div>
-                    <input
-                      value={newBrandName}
-                      onChange={(e) => setNewBrandName(e.target.value)}
-                      placeholder="브랜드명 입력"
-                    />
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--blue2)" }}>➕ 새 브랜드 등록</div>
+                    <input value={newBrandName} onChange={(e) => setNewBrandName(e.target.value)} placeholder="브랜드명 입력" />
                     <div style={{ display: "flex", gap: 6 }}>
                       <input
                         type="color"
@@ -1004,10 +1280,7 @@ export default function AdminPage() {
                         onChange={(e) => setNewBrandColor(e.target.value)}
                         style={{ width: 38, height: 32, padding: 2 }}
                       />
-                      <input
-                        value={newBrandColor}
-                        onChange={(e) => setNewBrandColor(e.target.value)}
-                      />
+                      <input value={newBrandColor} onChange={(e) => setNewBrandColor(e.target.value)} />
                     </div>
                     <button className="btn btn-primary btn-sm" onClick={addBrand}>
                       브랜드 등록

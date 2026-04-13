@@ -1,8 +1,98 @@
-### 로그인 테스트
-POST http://localhost:3000/auth/login
+### 사용자 목록
+GET http://localhost:3001/users
+
+###
+
+### 사용자 생성
+POST http://localhost:3001/users
 Content-Type: application/json
 
 {
-  "loginId": "admin",
-  "password": "admin1234"
+  "loginId": "dealer01",
+  "password": "1234",
+  "name": "거래처1",
+  "company": "테스트상사",
+  "phone": "010-1111-2222",
+  "role": "USER",
+  "status": "ACTIVE",
+  "memo": "테스트 계정"
+}
+
+###
+
+### 사용자 수정
+PATCH http://localhost:3001/users/USER_ID_HERE
+Content-Type: application/json
+
+{
+  "name": "거래처1 수정",
+  "status": "PENDING"
+}
+
+###
+
+### 사용자 삭제
+DELETE http://localhost:3001/users/USER_ID_HERE
+
+###
+
+### 브랜드 목록
+GET http://localhost:3001/brands
+
+###
+
+### 브랜드 저장
+PUT http://localhost:3001/brands/bulk
+Content-Type: application/json
+
+{
+  "brands": [
+    {
+      "name": "코웨이",
+      "color": "#0066CC",
+      "sortOrder": 0
+    },
+    {
+      "name": "SK매직",
+      "color": "#E8242A",
+      "sortOrder": 1
+    },
+    {
+      "name": "기타브랜드 입력",
+      "color": "#6B7280",
+      "sortOrder": 2
+    }
+  ]
+}
+
+###
+
+### 카테고리 목록
+GET http://localhost:3001/categories
+
+###
+
+### 카테고리 저장
+PUT http://localhost:3001/categories/bulk
+Content-Type: application/json
+
+{
+  "categories": [
+    {
+      "name": "정수기",
+      "sortOrder": 0
+    },
+    {
+      "name": "공기청정기",
+      "sortOrder": 1
+    },
+    {
+      "name": "비데",
+      "sortOrder": 2
+    },
+    {
+      "name": "기타 상품",
+      "sortOrder": 3
+    }
+  ]
 }

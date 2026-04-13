@@ -190,3 +190,4 @@ model ReceiptStatusHistory {
   note          String?
   createdAt     DateTime     @default(now())
 }
+

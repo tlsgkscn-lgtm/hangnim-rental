@@ -5,12 +5,91 @@ import { useRouter } from "next/navigation";
 import TopNav from "../../components/layout/top-nav";
 import {
   formatPhone,
-  getReceipts,
   getSession,
   initializeMockData,
   statusBadgeClass,
   type Receipt,
 } from "../../lib/storage";
+import { apiFetch } from "../../lib/api";
+
+function fromApiStatus(
+  status: "RECEIVED" | "CONSULTING" | "CONTRACTED" | "INSTALLED" | "CANCELED",
+): Receipt["status"] {
+  switch (status) {
+    case "RECEIVED":
+      return "접수";
+    case "CONSULTING":
+      return "상담중";
+    case "CONTRACTED":
+      return "계약완료";
+    case "INSTALLED":
+      return "설치완료";
+    case "CANCELED":
+      return "취소";
+    default:
+      return "접수";
+  }
+}
+
+function mapReceiptFromApi(r: any): Receipt {
+  return {
+    id: r.id,
+    num: r.receiptNumber,
+    date: r.createdAt?.slice(0, 10) || "",
+    name: r.customerName,
+    phone: r.phone,
+    addr: [r.address1, r.address2].filter(Boolean).join(" "),
+    products:
+      r.products?.map((p: any) => {
+        const brand = p.brand?.name || p.customBrandName || "기타";
+        const category = p.category?.name || p.customCategoryName || "";
+        let text = `${brand} ${category}`.trim();
+        if (p.productName) text += ` ${p.productName}`;
+        if (p.modelName) text += ` [${p.modelName}]`;
+        return text;
+      }) || [],
+    productDetails:
+      r.products?.map((p: any) => ({
+        brand: p.brand?.name || p.customBrandName || "기타",
+        category: p.category?.name || p.customCategoryName || "",
+        productName: p.productName,
+        modelName: p.modelName,
+        color: p.color,
+        qty: p.quantity,
+        managementType: p.managementType,
+        promotion: p.promotion,
+        contractPeriod: p.contractPeriod,
+        rentalFee: p.rentalFee,
+      })) || [],
+    period: 0,
+    monthly: 0,
+    status: fromApiStatus(r.status),
+    agent: r.salesAgent || "-",
+    channel: r.receptionChannel || "-",
+    memo: r.memo || "",
+    payMethod:
+      r.paymentMethod === "BANK"
+        ? "은행"
+        : r.paymentMethod === "CARD"
+        ? "신용카드"
+        : "기타",
+    bankName: r.bankName || "",
+    bankAccount: r.bankAccount || "",
+    cardCompany: r.cardCompany || "",
+    cardNumber: r.cardNumber || "",
+    cardExpiry: r.cardExpiry || "",
+    payEtc: r.paymentEtcMemo || "",
+    custType:
+      r.customerType === "PERSONAL"
+        ? "개인"
+        : r.customerType === "BUSINESS"
+        ? "사업자"
+        : "기타",
+    userId: r.createdBy?.id || "",
+    userName: r.createdBy?.name || "",
+    createdAt: r.createdAt?.slice(0, 10) || "",
+  } as Receipt;
+}
 
 export default function LookupPage() {
   const router = useRouter();
@@ -37,7 +116,7 @@ export default function LookupPage() {
     return getSession();
   }, [sessionReady]);
 
-  const doLookup = () => {
+  const doLookup = async () => {
     const nm = name.trim();
     const ph = phone.trim().replace(/-/g, "");
 
@@ -46,25 +125,31 @@ export default function LookupPage() {
       return;
     }
 
-    const receipts = getReceipts();
+    try {
+      const receipts = await apiFetch<any[]>("/receipts");
+      const mapped = receipts.map(mapReceiptFromApi);
 
-    const filtered = receipts.filter((r) => {
-      if (currentSession?.role !== "admin" && r.userId !== currentSession?.id) {
+      const filtered = mapped.filter((r) => {
+        if (currentSession?.role !== "admin" && r.userId !== currentSession?.id) {
+          return false;
+        }
+
+        const receiptPhone = (r.phone || "").replace(/-/g, "");
+        const nameMatch = nm ? r.name === nm : false;
+        const phoneMatch = ph ? receiptPhone === ph : false;
+
+        if (nm && ph) return nameMatch && phoneMatch;
+        if (nm) return nameMatch;
+        if (ph) return phoneMatch;
+
         return false;
-      }
+      });
 
-      const receiptPhone = (r.phone || "").replace(/-/g, "");
-      const nameMatch = nm ? r.name === nm : false;
-      const phoneMatch = ph ? receiptPhone === ph : false;
-
-      if (nm && ph) return nameMatch && phoneMatch;
-      if (nm) return nameMatch;
-      if (ph) return phoneMatch;
-
-      return false;
-    });
-
-    setResults(filtered);
+      setResults(filtered);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "조회 중 오류가 발생했습니다.");
+    }
   };
 
   if (!sessionReady) return null;
@@ -160,7 +245,7 @@ export default function LookupPage() {
                     </thead>
                     <tbody>
                       {results.map((r) => (
-                        <tr key={r.num}>
+                        <tr key={r.id || r.num}>
                           <td>
                             <span
                               style={{
