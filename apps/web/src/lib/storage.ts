@@ -24,30 +24,31 @@ export type ProductDetail = {
 };
 
 export type Receipt = {
+  id?: string;
   num: string;
   date: string;
   name: string;
   phone: string;
-  addr: string;
+  addr?: string;
   products: string[];
-  productDetails: ProductDetail[];
-  period: number;
-  monthly: number;
-  status: ReceiptStatus;
-  agent: string;
-  channel: string;
-  memo: string;
-  payMethod: "은행" | "신용카드" | "기타";
+  productDetails?: any[];
+  period?: number;
+  monthly?: number;
+  status: "접수" | "상담중" | "계약완료" | "설치완료" | "취소";
+  agent?: string;
+  channel?: string;
+  memo?: string;
+  payMethod?: string;
   bankName?: string;
   bankAccount?: string;
   cardCompany?: string;
   cardNumber?: string;
   cardExpiry?: string;
   payEtc?: string;
-  custType: "개인" | "사업자";
+  custType?: string;
   userId?: string;
   userName?: string;
-  createdAt: string;
+  createdAt?: string;
 };
 
 const PREFIX = "wj_";
