@@ -106,17 +106,37 @@ export default function TopNav({ active = "apply" }: TopNavProps) {
 
               {bellOpen && (
                 <div className="notif-dropdown">
-                  <div className="notif-dropdown-header">새 접수 알림</div>
+                  <div className="notif-dropdown-header">
+                    <span>새 접수 알림</span>
+                    {toasts.length > 0 && (
+                      <button
+                        className="notif-clear-all"
+                        type="button"
+                        onClick={() => { toasts.forEach((t) => dismissToast(t.id)); }}
+                      >
+                        전체 확인
+                      </button>
+                    )}
+                  </div>
                   {toasts.length === 0 ? (
                     <div className="notif-empty">새 접수 알림이 없습니다</div>
                   ) : (
                     toasts.map((t) => (
                       <div key={t.id} className="notif-dropdown-item">
-                        <div className="notif-item-num">{t.receiptNumber}</div>
-                        <div className="notif-item-name">{t.customerName}</div>
-                        <div className="notif-item-time">
-                          {t.createdAt.slice(0, 16).replace("T", " ")}
+                        <div className="notif-item-main">
+                          <div className="notif-item-num">{t.receiptNumber}</div>
+                          <div className="notif-item-name">{t.customerName}</div>
+                          <div className="notif-item-time">
+                            {t.createdAt.slice(0, 16).replace("T", " ")}
+                          </div>
                         </div>
+                        <button
+                          className="notif-item-close"
+                          type="button"
+                          onClick={() => dismissToast(t.id)}
+                        >
+                          ✕
+                        </button>
                       </div>
                     ))
                   )}
