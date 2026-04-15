@@ -18,6 +18,27 @@ export function useReceiptNotifications(enabled: boolean) {
   const esRef = useRef<EventSource | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const playSound = useCallback(() => {
+    try {
+      const ctx = new AudioContext();
+      const frequencies = [784, 1047, 1319]; // G5 → C6 → E6 (밝은 3화음)
+      frequencies.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        const start = ctx.currentTime + i * 0.12;
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.25, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.3);
+        osc.start(start);
+        osc.stop(start + 0.3);
+      });
+    } catch {}
+  }, []);
+
   const connect = useCallback(() => {
     const token =
       typeof window !== "undefined"
@@ -38,6 +59,7 @@ export function useReceiptNotifications(enabled: boolean) {
         const item: NotificationItem = { id: `${Date.now()}`, ...data };
         setToasts((prev) => [item, ...prev].slice(0, 5));
         setUnreadCount((c) => c + 1);
+        playSound();
       } catch {}
     };
 
