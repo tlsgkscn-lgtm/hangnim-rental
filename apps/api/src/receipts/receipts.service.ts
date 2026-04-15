@@ -7,12 +7,16 @@ import {
   ReceiptStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateReceiptDto } from './dto/create-receipt.dto';
 import { UpdateReceiptStatusDto } from './dto/update-receipt-status.dto';
 
 @Injectable()
 export class ReceiptsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   private async generateReceiptNumber() {
     const now = new Date();
@@ -123,7 +127,7 @@ export class ReceiptsService {
       },
     };
 
-    return this.prisma.receipt.create({
+    const created = await this.prisma.receipt.create({
       data,
       include: {
         createdBy: true,
@@ -137,6 +141,14 @@ export class ReceiptsService {
         histories: true,
       },
     });
+
+    this.notifications.emit({
+      receiptNumber: created.receiptNumber,
+      customerName: created.customerName,
+      createdAt: created.createdAt.toISOString(),
+    });
+
+    return created;
   }
 
   async findAll() {
