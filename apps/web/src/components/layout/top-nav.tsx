@@ -25,7 +25,7 @@ export default function TopNav({ active = "apply" }: TopNavProps) {
     }
   }, []);
 
-  const { toasts, unreadCount, dismissToast, clearUnread } =
+  const { toasts, history, unreadCount, dismissToast, dismissHistory, clearHistory, clearUnread } =
     useReceiptNotifications(isAdmin);
 
   // 토스트 5초 후 자동 제거
@@ -108,20 +108,20 @@ export default function TopNav({ active = "apply" }: TopNavProps) {
                 <div className="notif-dropdown">
                   <div className="notif-dropdown-header">
                     <span>새 접수 알림</span>
-                    {toasts.length > 0 && (
+                    {history.length > 0 && (
                       <button
                         className="notif-clear-all"
                         type="button"
-                        onClick={() => { toasts.forEach((t) => dismissToast(t.id)); }}
+                        onClick={clearHistory}
                       >
                         전체 확인
                       </button>
                     )}
                   </div>
-                  {toasts.length === 0 ? (
+                  {history.length === 0 ? (
                     <div className="notif-empty">새 접수 알림이 없습니다</div>
                   ) : (
-                    toasts.map((t) => (
+                    history.map((t) => (
                       <div key={t.id} className="notif-dropdown-item">
                         <div className="notif-item-main">
                           <div className="notif-item-num">{t.receiptNumber}</div>
@@ -133,7 +133,7 @@ export default function TopNav({ active = "apply" }: TopNavProps) {
                         <button
                           className="notif-item-close"
                           type="button"
-                          onClick={() => dismissToast(t.id)}
+                          onClick={() => dismissHistory(t.id)}
                         >
                           ✕
                         </button>

@@ -13,7 +13,10 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001";
 
 export function useReceiptNotifications(enabled: boolean) {
+  // 하단 팝업 (5초 자동 소멸)
   const [toasts, setToasts] = useState<NotificationItem[]>([]);
+  // 드롭다운 목록 (사용자가 직접 지워야 사라짐)
+  const [history, setHistory] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const esRef = useRef<EventSource | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -28,15 +31,14 @@ export function useReceiptNotifications(enabled: boolean) {
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.type = "sine";
-      osc.frequency.setValueAtTime(1318, ctx.currentTime);       // E6
-      osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.08); // A6
+      osc.frequency.setValueAtTime(1318, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.08);
       gain.gain.setValueAtTime(0, ctx.currentTime);
       gain.gain.linearRampToValueAtTime(0.35, ctx.currentTime + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.55);
 
-      // 띠링 끝난 후 TTS
       setTimeout(() => {
         try {
           const synth = window.speechSynthesis;
@@ -70,7 +72,10 @@ export function useReceiptNotifications(enabled: boolean) {
       try {
         const data = JSON.parse(e.data) as Omit<NotificationItem, "id">;
         const item: NotificationItem = { id: `${Date.now()}`, ...data };
+        // 하단 팝업에 추가
         setToasts((prev) => [item, ...prev].slice(0, 5));
+        // 드롭다운 히스토리에 추가 (최대 20개)
+        setHistory((prev) => [item, ...prev].slice(0, 20));
         setUnreadCount((c) => c + 1);
         playSound();
       } catch {}
@@ -80,7 +85,7 @@ export function useReceiptNotifications(enabled: boolean) {
       es.close();
       retryRef.current = setTimeout(connect, 5000);
     };
-  }, []);
+  }, [playSound]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -91,11 +96,20 @@ export function useReceiptNotifications(enabled: boolean) {
     };
   }, [enabled, connect]);
 
+  // 토스트만 5초 후 자동 제거
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  // 드롭다운 히스토리 개별 삭제
+  const dismissHistory = useCallback((id: string) => {
+    setHistory((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // 드롭다운 히스토리 전체 삭제
+  const clearHistory = useCallback(() => setHistory([]), []);
+
   const clearUnread = useCallback(() => setUnreadCount(0), []);
 
-  return { toasts, unreadCount, dismissToast, clearUnread };
+  return { toasts, history, unreadCount, dismissToast, dismissHistory, clearHistory, clearUnread };
 }
