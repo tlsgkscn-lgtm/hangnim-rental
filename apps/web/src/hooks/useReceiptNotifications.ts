@@ -20,14 +20,35 @@ export function useReceiptNotifications(enabled: boolean) {
 
   const playSound = useCallback(() => {
     try {
-      const synth = window.speechSynthesis;
-      synth.cancel();
-      const utter = new SpeechSynthesisUtterance("접수되었습니다");
-      utter.lang = "ko-KR";
-      utter.rate = 1.0;
-      utter.pitch = 1.1;
-      utter.volume = 1.0;
-      synth.speak(utter);
+      const ctx = new AudioContext();
+
+      // 띠링 - 고음의 청량한 단음
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1318, ctx.currentTime);       // E6
+      osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.08); // A6
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.35, ctx.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.55);
+
+      // 띠링 끝난 후 TTS
+      setTimeout(() => {
+        try {
+          const synth = window.speechSynthesis;
+          synth.cancel();
+          const utter = new SpeechSynthesisUtterance("접수되었습니다");
+          utter.lang = "ko-KR";
+          utter.rate = 1.0;
+          utter.pitch = 1.1;
+          utter.volume = 1.0;
+          synth.speak(utter);
+        } catch {}
+      }, 600);
     } catch {}
   }, []);
 
