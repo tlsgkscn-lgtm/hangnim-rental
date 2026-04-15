@@ -20,22 +20,14 @@ export function useReceiptNotifications(enabled: boolean) {
 
   const playSound = useCallback(() => {
     try {
-      const ctx = new AudioContext();
-      const frequencies = [784, 1047, 1319]; // G5 → C6 → E6 (밝은 3화음)
-      frequencies.forEach((freq, i) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = "sine";
-        osc.frequency.value = freq;
-        const start = ctx.currentTime + i * 0.12;
-        gain.gain.setValueAtTime(0, start);
-        gain.gain.linearRampToValueAtTime(0.25, start + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.3);
-        osc.start(start);
-        osc.stop(start + 0.3);
-      });
+      const synth = window.speechSynthesis;
+      synth.cancel();
+      const utter = new SpeechSynthesisUtterance("접수되었습니다");
+      utter.lang = "ko-KR";
+      utter.rate = 1.0;
+      utter.pitch = 1.1;
+      utter.volume = 1.0;
+      synth.speak(utter);
     } catch {}
   }, []);
 
