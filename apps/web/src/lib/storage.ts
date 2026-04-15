@@ -3,7 +3,8 @@ export type UserStatus = "active" | "pending" | "blocked";
 export type ReceiptStatus = "접수" | "상담중" | "계약완료" | "설치완료" | "취소";
 
 export type AppUser = {
-  id: string;
+  id: string;       // DB UUID (API 호출용)
+  loginId: string;  // 로그인 아이디 (표시용)
   pw: string;
   name: string;
   company?: string;
@@ -101,6 +102,7 @@ export function initializeMockData() {
     const defaultUsers: AppUser[] = [
       {
         id: "admin",
+        loginId: "admin",
         pw: "admin1234",
         name: "관리자",
         company: "우리집렌탈",
@@ -112,6 +114,7 @@ export function initializeMockData() {
       },
       {
         id: "dealer01",
+        loginId: "dealer01",
         pw: "1234",
         name: "김영업",
         company: "(주)ABC렌탈",
@@ -123,6 +126,7 @@ export function initializeMockData() {
       },
       {
         id: "dealer02",
+        loginId: "dealer02",
         pw: "1234",
         name: "이대리",
         company: "XYZ유통",
@@ -134,6 +138,7 @@ export function initializeMockData() {
       },
       {
         id: "dealer03",
+        loginId: "dealer03",
         pw: "1234",
         name: "박팀장",
         company: "한국렌탈서비스",

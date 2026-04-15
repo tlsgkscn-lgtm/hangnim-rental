@@ -176,7 +176,8 @@ function mapReceiptFromApi(r: any): Receipt {
 
 function mapUserFromApi(u: any): AppUser {
   return {
-    id: u.loginId || u.id,
+    id: u.id,
+    loginId: u.loginId,
     pw: "",
     name: u.name,
     company: u.company || "",
@@ -366,7 +367,7 @@ export default function AdminPage() {
       if (userStatusFilter && u.status !== userStatusFilter) return false;
       if (q) {
         const a = u.name.toLowerCase().includes(q);
-        const b = u.id.toLowerCase().includes(q);
+        const b = u.loginId.toLowerCase().includes(q);
         if (!a && !b) return false;
       }
       return true;
@@ -472,7 +473,7 @@ export default function AdminPage() {
 
   const openEditUserModal = (user: AppUser) => {
     setEditingUserId(user.id);
-    setUmId(user.id);
+    setUmId(user.loginId);
     setUmPw((user as any).pw || "");
     setUmName(user.name);
     setUmCompany((user as any).company || "");
@@ -904,7 +905,7 @@ export default function AdminPage() {
                     <option value="">전체 접수자</option>
                     {allUsers.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.name} ({u.id})
+                        {u.name} ({u.loginId})
                       </option>
                     ))}
                   </select>
@@ -1024,7 +1025,7 @@ export default function AdminPage() {
               {pendingUsers.length > 0 && (
                 <div className="alert alert-yellow" style={{ marginBottom: 12 }}>
                   ⚠️ 승인 대기 중인 계정이 {pendingUsers.length}개 있습니다:{" "}
-                  {pendingUsers.map((u) => `${u.name}(${u.id})`).join(", ")}
+                  {pendingUsers.map((u) => `${u.name}(${u.loginId})`).join(", ")}
                 </div>
               )}
 
@@ -1049,7 +1050,7 @@ export default function AdminPage() {
                         const count = allReceipts.filter((r) => r.userId === u.id).length;
                         return (
                           <tr key={u.id}>
-                            <td style={{ fontWeight: 700, color: "var(--blue2)" }}>{u.id}</td>
+                            <td style={{ fontWeight: 700, color: "var(--blue2)" }}>{u.loginId}</td>
                             <td><strong>{u.name}</strong></td>
                             <td>{(u as any).company || "-"}</td>
                             <td style={{ whiteSpace: "nowrap" }}>{(u as any).phone || "-"}</td>
