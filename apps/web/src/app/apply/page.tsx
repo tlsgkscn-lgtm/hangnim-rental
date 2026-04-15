@@ -1,19 +1,16 @@
 "use client";
 
 
-import { apiFetch } from '../../lib/api';
+import { apiFetch, uploadFiles } from '../../lib/api';
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import TopNav from "../../components/layout/top-nav";
 import {
-  createReceiptNumber,
   formatCard,
   formatExpiry,
   formatPhone,
-  getReceipts,
   getSession,
   initializeMockData,
-  setReceipts,
 } from "../../lib/storage";
 
 type Brand = {
@@ -52,28 +49,16 @@ const BRANDS: Brand[] = [
 ];
 
 const SUB_CATEGORIES = ["정수기", "공기청정기", "비데", "기타 상품"];
-const MOCK_ADDRESSES = [
-  {
-    zip: "44248",
-    road: "울산 북구 명촌3길 21",
-    jibun: "울산 북구 진장동 890",
-  },
-  {
-    zip: "06164",
-    road: "서울 강남구 테헤란로 152",
-    jibun: "서울 강남구 역삼동 737",
-  },
-  {
-    zip: "48058",
-    road: "부산 해운대구 센텀중앙로 97",
-    jibun: "부산 해운대구 재송동 1212",
-  },
-  {
-    zip: "35229",
-    road: "대전 서구 둔산로 100",
-    jibun: "대전 서구 둔산동 1413",
-  },
-];
+
+declare global {
+  interface Window {
+    daum: {
+      Postcode: new (options: {
+        oncomplete: (data: { zonecode: string; roadAddress: string; jibunAddress: string }) => void;
+      }) => { open: () => void };
+    };
+  }
+}
 
 
 
@@ -83,9 +68,6 @@ export default function ApplyPage() {
 
   const router = useRouter();
 
-  const [addrOpen, setAddrOpen] = useState(false);
-  const [addrKeyword, setAddrKeyword] = useState("");
-  const [addrResults, setAddrResults] = useState(MOCK_ADDRESSES);
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [activeBrandId, setActiveBrandId] = useState<string | null>(null);
@@ -118,53 +100,26 @@ export default function ApplyPage() {
   const [rentChannel, setRentChannel] = useState("방문영업");
   const [rentCtype, setRentCtype] = useState<"개인" | "사업자" | "기타">("개인");
 
-  const [bizFiles, setBizFiles] = useState<string[]>([]);
-  const [etcFiles, setEtcFiles] = useState<string[]>([]);
-  const [personalEtcFiles, setPersonalEtcFiles] = useState<string[]>([]);
+  const [bizFiles, setBizFiles] = useState<File[]>([]);
+  const [etcFiles, setEtcFiles] = useState<File[]>([]);
+  const [personalEtcFiles, setPersonalEtcFiles] = useState<File[]>([]);
 
   const [submittedNum, setSubmittedNum] = useState("");
   const [submittedDate, setSubmittedDate] = useState("");
   const [submittedProducts, setSubmittedProducts] = useState<string[]>([]);
 
   const openAddrSearch = () => {
-    setAddrKeyword("");
-    setAddrResults(MOCK_ADDRESSES);
-    setAddrOpen(true);
-  };
-
-  const closeAddrSearch = () => {
-    setAddrOpen(false);
-  };
-
-  const doAddrSearch = () => {
-    const q = addrKeyword.trim().toLowerCase();
-
-    if (!q) {
-      setAddrResults(MOCK_ADDRESSES);
-      return;
-    }
-
-    const filtered = MOCK_ADDRESSES.filter((item) => {
-      return (
-        item.road.toLowerCase().includes(q) ||
-        item.jibun.toLowerCase().includes(q) ||
-        item.zip.includes(q)
-      );
-    });
-
-    setAddrResults(filtered);
-  };
-
-  const selectAddr = (zip: string, road: string) => {
-    setCustZip(zip);
-    setCustAddr1(road);
-    setCustAddr2("");
-    setAddrOpen(false);
-
-    setTimeout(() => {
-      const input = document.getElementById("cust-addr2") as HTMLInputElement | null;
-      input?.focus();
-    }, 120);
+    new window.daum.Postcode({
+      oncomplete: (data) => {
+        setCustZip(data.zonecode);
+        setCustAddr1(data.roadAddress || data.jibunAddress);
+        setCustAddr2("");
+        setTimeout(() => {
+          const input = document.getElementById("cust-addr2") as HTMLInputElement | null;
+          input?.focus();
+        }, 120);
+      },
+    }).open();
   };
 
 
@@ -227,8 +182,8 @@ export default function ApplyPage() {
     setSelectedItems((prev) => prev.filter((item) => item.uid !== uid));
   };
 
-  const fileNames = (e: ChangeEvent<HTMLInputElement>) =>
-    Array.from(e.target.files ?? []).map((f) => f.name);
+  const toFileList = (e: ChangeEvent<HTMLInputElement>) =>
+    Array.from(e.target.files ?? []);
 
 
   const validateStep1 = () => {
@@ -332,24 +287,9 @@ export default function ApplyPage() {
     setStep(next);
   };
 
-  const productSummaryLines = useMemo(() => {
-    return selectedItems.map((item) => {
-      const brandName =
-        item.brandId === "etc" && item.customBrand.trim()
-          ? item.customBrand.trim()
-          : item.brandName;
-
-      return `${brandName} ${item.category}${item.productName ? ` ${item.productName}` : ""}${
-        item.modelName ? ` [${item.modelName}]` : ""
-      }${item.color ? ` (${item.color})` : ""}${item.qty > 1 ? ` x${item.qty}` : ""}${
-        item.contractPeriod ? ` / ${item.contractPeriod}` : ""
-      }${item.rentalFee ? ` ${item.rentalFee}` : ""}`;
-    });
-  }, [selectedItems]);
 
   const submitForm = async () => {
   try {
-    const session = getSession();
 
     const payload = {
       customerName: custName,
@@ -414,8 +354,19 @@ export default function ApplyPage() {
         rentalFee: item.rentalFee,
       })),
 
-      attachments: [],
+      attachments: [] as { type: string; fileUrl: string; fileName: string; mimeType: string; fileSize: number }[],
     };
+
+    // 파일 업로드
+    const bizUploaded = await uploadFiles(bizFiles);
+    const etcUploaded = await uploadFiles(etcFiles);
+    const personalUploaded = await uploadFiles(personalEtcFiles);
+
+    payload.attachments = [
+      ...bizUploaded.map((f) => ({ type: 'BUSINESS_DOC', fileUrl: f.url, fileName: f.fileName, mimeType: f.mimeType, fileSize: f.fileSize })),
+      ...etcUploaded.map((f) => ({ type: 'ETC_DOC', fileUrl: f.url, fileName: f.fileName, mimeType: f.mimeType, fileSize: f.fileSize })),
+      ...personalUploaded.map((f) => ({ type: 'PERSONAL_DOC', fileUrl: f.url, fileName: f.fileName, mimeType: f.mimeType, fileSize: f.fileSize })),
+    ];
 
     const created = await apiFetch<{
       id: string;
@@ -485,11 +436,11 @@ export default function ApplyPage() {
     setPersonalEtcFiles([]);
   };
 
-  const renderFileTags = (files: string[]) => (
+  const renderFileTags = (files: File[]) => (
     <div className="file-list">
-      {files.map((name) => (
-        <span key={name} className="file-tag">
-          📄 {name}
+      {files.map((f) => (
+        <span key={`${f.name}-${f.size}`} className="file-tag">
+          📄 {f.name}
         </span>
       ))}
     </div>
@@ -1150,7 +1101,7 @@ export default function ApplyPage() {
                         type="file"
                         multiple
                         accept="image/*,.pdf"
-                        onChange={(e) => setBizFiles(fileNames(e))}
+                        onChange={(e) => setBizFiles(toFileList(e))}
                       />
                       {renderFileTags(bizFiles)}
                     </div>
@@ -1161,7 +1112,7 @@ export default function ApplyPage() {
                         type="file"
                         multiple
                         accept="image/*,.pdf"
-                        onChange={(e) => setEtcFiles(fileNames(e))}
+                        onChange={(e) => setEtcFiles(toFileList(e))}
                       />
                       {renderFileTags(etcFiles)}
                     </div>
@@ -1174,7 +1125,7 @@ export default function ApplyPage() {
                         type="file"
                         multiple
                         accept="image/*,.pdf"
-                        onChange={(e) => setPersonalEtcFiles(fileNames(e))}
+                        onChange={(e) => setPersonalEtcFiles(toFileList(e))}
                       />
                       {renderFileTags(personalEtcFiles)}
                     </div>
@@ -1449,89 +1400,6 @@ export default function ApplyPage() {
         )}
       </main>
 
-            {addrOpen && (
-        <>
-          <div className="addr-backdrop" onClick={closeAddrSearch}></div>
-
-          <div className="addr-search-panel">
-            <div className="addr-search-header">
-              <span className="addr-search-header-title">🔍 주소 검색</span>
-              <button className="addr-search-close" type="button" onClick={closeAddrSearch}>
-                ✕
-              </button>
-            </div>
-
-            <div className="addr-search-body">
-              <div className="addr-search-row">
-                <input
-                  className="addr-search-input"
-                  value={addrKeyword}
-                  onChange={(e) => setAddrKeyword(e.target.value)}
-                  placeholder="예) 명촌3길 21, 진장동 890, 강남구 테헤란로"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") doAddrSearch();
-                  }}
-                />
-                <button className="addr-search-btn" type="button" onClick={doAddrSearch}>
-                  검색
-                </button>
-              </div>
-
-              <div className="addr-search-help">
-                도로명+건물번호, 지역명+번지, 건물명으로 검색
-              </div>
-            </div>
-
-            <div className="addr-results">
-              {addrResults.length > 0 ? (
-                <>
-                  <div className="addr-result-meta">
-                    검색결과 {addrResults.length}건 | 클릭하여 선택
-                  </div>
-
-                  {addrResults.map((item) => (
-                    <div
-                      key={`${item.zip}-${item.road}`}
-                      className="addr-result-item"
-                      onClick={() => selectAddr(item.zip, item.road)}
-                    >
-                      <div className="addr-zip">{item.zip}</div>
-
-                      <div className="addr-line">
-                        <span className="addr-tag-road">도로명</span>
-                        <span className="addr-line-text">{item.road}</span>
-                      </div>
-
-                      <div className="addr-line">
-                        <span className="addr-tag-jibun">지 번</span>
-                        <span className="addr-line-text sub">{item.jibun}</span>
-                      </div>
-                    </div>
-                  ))}
-                </>
-              ) : (
-                <div
-                  style={{
-                    textAlign: "center",
-                    padding: "32px",
-                    color: "#888",
-                    fontSize: "13px",
-                    lineHeight: 1.8,
-                  }}
-                >
-                  검색 결과가 없습니다.
-                  <br />
-                  <span style={{ fontSize: "12px", color: "#aaa" }}>
-                    다른 키워드로 검색해 보세요
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="addr-search-footer">도로명주소 검색 서비스</div>
-          </div>
-        </>
-      )}
     </>
   );
 }

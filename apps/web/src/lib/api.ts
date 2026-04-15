@@ -38,3 +38,41 @@ export async function apiFetch<T>(
 
   return data as T;
 }
+
+export type UploadedFile = {
+  url: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+};
+
+export async function uploadFiles(files: File[]): Promise<UploadedFile[]> {
+  if (!files.length) return [];
+
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem("wj_access_token")
+      : null;
+
+  const formData = new FormData();
+  files.forEach((f) => formData.append("files", f));
+
+  const res = await fetch(`${API_BASE_URL}/upload`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+    cache: "no-store",
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    const message =
+      typeof data === "object" && data && "message" in data
+        ? String((data as any).message)
+        : "파일 업로드 중 오류가 발생했습니다.";
+    throw new Error(message);
+  }
+
+  return data as UploadedFile[];
+}

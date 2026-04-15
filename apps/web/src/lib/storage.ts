@@ -23,6 +23,15 @@ export type ProductDetail = {
   qty: number;
 };
 
+export type ReceiptAttachment = {
+  id?: string;
+  type: "BUSINESS_DOC" | "ETC_DOC" | "PERSONAL_DOC";
+  fileName: string;
+  fileUrl: string;
+  mimeType?: string;
+  fileSize?: number;
+};
+
 export type Receipt = {
   id?: string;
   num: string;
@@ -32,6 +41,7 @@ export type Receipt = {
   addr?: string;
   products: string[];
   productDetails?: any[];
+  attachments?: ReceiptAttachment[];
   period?: number;
   monthly?: number;
   status: "접수" | "상담중" | "계약완료" | "설치완료" | "취소";

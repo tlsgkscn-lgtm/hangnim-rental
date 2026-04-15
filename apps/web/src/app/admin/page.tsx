@@ -10,6 +10,7 @@ import {
   initializeMockData,
   statusBadgeClass,
   type Receipt,
+  type ReceiptAttachment,
   type AppUser,
 } from "../../lib/storage";
 import { apiFetch } from "../../lib/api";
@@ -159,6 +160,14 @@ function mapReceiptFromApi(r: any): Receipt {
         : r.customerType === "BUSINESS"
         ? "사업자"
         : "기타",
+    attachments: (r.attachments ?? []).map((a: any): ReceiptAttachment => ({
+      id: a.id,
+      type: a.type,
+      fileName: a.fileName,
+      fileUrl: a.fileUrl,
+      mimeType: a.mimeType,
+      fileSize: a.fileSize,
+    })),
     userId: r.createdBy?.id || "",
     userName: r.createdBy?.name || "",
     createdAt: r.createdAt?.slice(0, 10) || "",
@@ -1457,6 +1466,48 @@ export default function AdminPage() {
                     <tr>
                       <td style={{ color: "var(--gray)", padding: "5px 0" }}>메모</td>
                       <td style={{ padding: "5px 0" }}>{selectedReceipt.memo}</td>
+                    </tr>
+                  ) : null}
+                  {selectedReceipt.attachments && selectedReceipt.attachments.length > 0 ? (
+                    <tr>
+                      <td style={{ color: "var(--gray)", padding: "5px 0", verticalAlign: "top" }}>첨부파일</td>
+                      <td style={{ padding: "5px 0" }}>
+                        {selectedReceipt.attachments.map((a, idx) => {
+                          const typeLabel =
+                            a.type === "BUSINESS_DOC" ? "사업자서류" :
+                            a.type === "ETC_DOC" ? "기타서류" : "개인서류";
+                          const sizeText = a.fileSize
+                            ? a.fileSize >= 1024 * 1024
+                              ? `${(a.fileSize / 1024 / 1024).toFixed(1)}MB`
+                              : `${Math.round(a.fileSize / 1024)}KB`
+                            : null;
+                          return (
+                            <div key={idx} style={{ marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{
+                                fontSize: 11,
+                                background: "#e0f2fe",
+                                color: "#0369a1",
+                                borderRadius: 4,
+                                padding: "1px 6px",
+                                flexShrink: 0,
+                              }}>
+                                {typeLabel}
+                              </span>
+                              <a
+                                href={a.fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ fontSize: 13, color: "var(--blue2)", textDecoration: "underline", wordBreak: "break-all" }}
+                              >
+                                📄 {a.fileName}
+                              </a>
+                              {sizeText && (
+                                <span style={{ fontSize: 11, color: "var(--gray)", flexShrink: 0 }}>{sizeText}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </td>
                     </tr>
                   ) : null}
                 </tbody>
